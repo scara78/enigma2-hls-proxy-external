@@ -1,0 +1,14 @@
+{
+  "name": "hls-proxy",
+  "version": "1.0.0",
+  "description": "HLS Proxy for Enigma2 streams with multi-stream support",
+  "main": "proxy.js",
+  "scripts": {
+    "start": "node proxy.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "author": "madoe21",
+  "license": "MIT"
+}

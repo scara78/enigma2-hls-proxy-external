@@ -1,0 +1,54 @@
+{
+  "ultra": {
+    "name": "Ultra High (Best Quality)",
+    "videoCodec": "libx264",
+    "preset": "slow",
+    "crf": "16",
+    "maxrate": "10000k",
+    "bufsize": "20000k",
+    "audioBitrate": "320k",
+    "profile": "high",
+    "level": "4.2",
+    "framerate": "50",
+    "description": "Best quality, high bitrate (approx. 8-10 Mbit/s)"
+  },
+  "high": {
+    "name": "High (Recommended)",
+    "videoCodec": "libx264",
+    "preset": "medium",
+    "crf": "18",
+    "maxrate": "6000k",
+    "bufsize": "12000k",
+    "audioBitrate": "256k",
+    "profile": "high",
+    "level": "4.1",
+    "framerate": "50",
+    "description": "Recommended for Full HD (approx. 4-6 Mbit/s)"
+  },
+  "medium": {
+    "name": "Medium (Balanced)",
+    "videoCodec": "libx264",
+    "preset": "fast",
+    "crf": "20",
+    "maxrate": "3000k",
+    "bufsize": "6000k",
+    "audioBitrate": "192k",
+    "profile": "main",
+    "level": "4.0",
+    "framerate": "25",
+    "description": "Good compromise (approx. 2-3 Mbit/s)"
+  },
+  "low": {
+    "name": "Low (Minimal CPU)",
+    "videoCodec": "libx264",
+    "preset": "ultrafast",
+    "crf": "23",
+    "maxrate": "1500k",
+    "bufsize": "3000k",
+    "audioBitrate": "128k",
+    "profile": "baseline",
+    "level": "3.1",
+    "framerate": "25",
+    "description": "Minimal CPU usage (approx. 1-1.5 Mbit/s)"
+  }
+}
