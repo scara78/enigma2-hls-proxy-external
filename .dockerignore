@@ -1,0 +1,17 @@
+# Ignoră node_modules
+node_modules/
+
+# Ignoră fișiere temporare HLS
+tmp/
+
+# Ignoră log-uri
+*.log
+npm-debug.log*
+
+# Ignoră fișiere de sistem
+.DS_Store
+Thumbs.db
+
+# Ignoră fișiere de mediu
+.env
+.env.local
