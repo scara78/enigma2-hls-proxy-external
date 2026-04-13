@@ -217,6 +217,20 @@ class StreamManager {
             };
         }
 
+        // IMPORTANT: Stop any existing stream from the same source URL
+        // This is critical for Enigma2 which doesn't support multiple simultaneous streams
+        const sourceUrl = params.url || `${params.host}:${params.port}`;
+        for (const [existingId, existingStream] of this.streams.entries()) {
+            const existingSourceUrl = existingStream.params.url ||
+                                     `${existingStream.params.host}:${existingStream.params.port}`;
+            
+            if (existingSourceUrl === sourceUrl) {
+                console.log(`[${existingId}] 🛑 Stopping existing stream from same source (Enigma2 limitation)`);
+                console.log(`[${existingId}] Source: ${sourceUrl}`);
+                this.stopStream(existingId, true); // Immediate cleanup
+            }
+        }
+
         console.log(`[Stream ${streamId}] Starting new stream...`);
         
         // Alte Dateien dieses Streams komplett löschen
