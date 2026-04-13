@@ -4,7 +4,8 @@
   "description": "HLS Proxy for Enigma2 streams with multi-stream support",
   "main": "proxy.js",
   "scripts": {
-    "start": "node proxy.js"
+    "start": "node proxy.js",
+    "dev": "node proxy.js"
   },
   "dependencies": {
     "express": "^4.18.2"
