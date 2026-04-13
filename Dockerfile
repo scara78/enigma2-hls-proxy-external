@@ -11,7 +11,7 @@ WORKDIR /app
 
 # Copiere package.json și instalare dependențe
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm install --omit=dev
 
 # Copiere cod sursă
 COPY . .
