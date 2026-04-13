@@ -83,3 +83,4 @@ config.local.js
 # Test outputs
 test_output/
 test-results/
+.dyad/
