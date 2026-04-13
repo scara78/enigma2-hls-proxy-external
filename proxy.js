@@ -96,6 +96,11 @@ class StreamManager {
 
     // Generate unique stream ID from parameters
     generateStreamId(params) {
+        // Support both direct URL and host/port/ref format
+        if (params.url) {
+            const base = `${params.url}:${params.quality}`;
+            return crypto.createHash('md5').update(base).digest('hex').substring(0, 8);
+        }
         const { host, port, user, ref, quality } = params;
         const hasAuth = user ? 'auth' : 'noauth';
         const base = `${host}:${port}:${hasAuth}:${ref}:${quality}`;
@@ -217,8 +222,14 @@ class StreamManager {
         // Alte Dateien dieses Streams komplett löschen
         this.cleanupStreamFiles(streamId, true); // true = sofort löschen
         
-        const encryptedUser = params.user ? encrypt(params.user) : null;
-        const encryptedPass = params.pass ? encrypt(params.pass) : null;
+        // Encrypt credentials based on mode
+        let credentials = {};
+        if (params.url) {
+            credentials.url = encrypt(params.url);
+        } else {
+            credentials.user = params.user ? encrypt(params.user) : null;
+            credentials.pass = params.pass ? encrypt(params.pass) : null;
+        }
         
         const streamUrl = this.buildStreamUrl(params);
         
@@ -233,16 +244,16 @@ class StreamManager {
         
         const streamInfo = {
             id: streamId,
-            params: {
+            params: params.url ? {
+                url: params.url,
+                quality: qualityKey
+            } : {
                 host: params.host,
                 port: params.port,
                 ref: params.ref,
                 quality: qualityKey
             },
-            credentials: {
-                user: encryptedUser,
-                pass: encryptedPass
-            },
+            credentials: credentials,
             ffmpeg: ffmpeg,
             started: Date.now(),
             lastAccessed: Date.now(),
@@ -308,6 +319,15 @@ class StreamManager {
 
     // Build stream URL from parameters
     buildStreamUrl(params, useEncryptedCredentials = false, encryptedCreds = null) {
+        // Direct URL mode
+        if (params.url) {
+            if (useEncryptedCredentials && encryptedCreds && encryptedCreds.url) {
+                return decrypt(encryptedCreds.url);
+            }
+            return params.url;
+        }
+        
+        // Legacy host/port/ref mode
         const { host, port, ref } = params;
         let user = params.user;
         let pass = params.pass;
@@ -567,20 +587,32 @@ const streamManager = new StreamManager();
 // Web Player URL
 app.get("/player", (req, res) => {
     try {
-        const { host, port, user, pass, ref, quality } = req.query;
+        const { host, port, user, pass, ref, quality, url } = req.query;
         
-        if (!host || !ref) {
-            return res.status(400).send("Missing required parameters: host and ref");
+        let params;
+        
+        // Direct URL mode
+        if (url) {
+            params = {
+                url: decodeURIComponent(url),
+                quality: quality || Object.keys(qualityPresets)[0]
+            };
         }
-        
-        const params = {
-            host,
-            port: port || "8001",
-            user: user ? decodeURIComponent(user) : null,
-            pass: pass ? decodeURIComponent(pass) : null,
-            ref: decodeURIComponent(ref),
-            quality: quality || Object.keys(qualityPresets)[0]
-        };
+        // Legacy host/port/ref mode
+        else {
+            if (!host || !ref) {
+                return res.status(400).send("Missing required parameters: url OR (host and ref)");
+            }
+            
+            params = {
+                host,
+                port: port || "8001",
+                user: user ? decodeURIComponent(user) : null,
+                pass: pass ? decodeURIComponent(pass) : null,
+                ref: decodeURIComponent(ref),
+                quality: quality || Object.keys(qualityPresets)[0]
+            };
+        }
         
         if (!qualityPresets[params.quality]) {
             params.quality = Object.keys(qualityPresets)[0];
@@ -592,7 +624,12 @@ app.get("/player", (req, res) => {
         const baseUrl = getBaseUrl(req);
         
         // Externe Stream-URL für VLC
-        const externalStreamUrl = `${baseUrl}/stream?host=${encodeURIComponent(host)}&port=${port || "8001"}&user=${user ? encodeURIComponent(user) : ''}&pass=${pass ? encodeURIComponent(pass) : ''}&ref=${encodeURIComponent(ref)}&quality=${params.quality}`;
+        let externalStreamUrl;
+        if (params.url) {
+            externalStreamUrl = `${baseUrl}/stream?url=${encodeURIComponent(params.url)}&quality=${params.quality}`;
+        } else {
+            externalStreamUrl = `${baseUrl}/stream?host=${encodeURIComponent(params.host)}&port=${params.port || "8001"}&user=${params.user ? encodeURIComponent(params.user) : ''}&pass=${params.pass ? encodeURIComponent(params.pass) : ''}&ref=${encodeURIComponent(params.ref)}&quality=${params.quality}`;
+        }
         
         // Quality Options für das Dropdown
         let qualityOptions = '';
@@ -647,9 +684,12 @@ app.get("/player", (req, res) => {
         <div class="info">
             <h3>📊 Stream Information</h3>
             <p><strong>Stream ID:</strong> <span class="stream-id">${streamId}</span></p>
-            <p><strong>Host:</strong> ${host}:${port || "8001"}</p>
+            ${params.url
+                ? `<p><strong>Source URL:</strong> <code style="display:inline;padding:3px 8px;background:#555;">${params.url}</code></p>`
+                : `<p><strong>Host:</strong> ${params.host}:${params.port || "8001"}</p>
             <p><strong>Service Ref:</strong> <code style="display: inline; padding: 3px 8px; background: #555;">${params.ref}</code></p>
-            <p><strong>Authentication:</strong> ${user ? 'Yes' : 'No'}</p>
+            <p><strong>Authentication:</strong> ${params.user ? 'Yes' : 'No'}</p>`
+            }
         </div>
         
         <div class="external-box">
@@ -836,20 +876,31 @@ app.get("/player", (req, res) => {
 // External Stream URL
 app.get("/stream", (req, res) => {
     try {
-        const { host, port, user, pass, ref, quality } = req.query;
+        const { host, port, user, pass, ref, quality, url } = req.query;
         
-        if (!host || !ref) {
-            return res.status(400).send("Missing required parameters: host and ref");
+        let params;
+        
+        // Direct URL mode
+        if (url) {
+            params = {
+                url: decodeURIComponent(url),
+                quality: quality || Object.keys(qualityPresets)[0]
+            };
         }
-        
-        const params = {
-            host,
-            port: port || "8001",
-            user: user ? decodeURIComponent(user) : null,
-            pass: pass ? decodeURIComponent(pass) : null,
-            ref: decodeURIComponent(ref),
-            quality: quality || Object.keys(qualityPresets)[0]
-        };
+        // Legacy host/port/ref mode
+        else {
+            if (!host || !ref) {
+                return res.status(400).send("Missing required parameters: url OR (host and ref)");
+            }
+            params = {
+                host,
+                port: port || "8001",
+                user: user ? decodeURIComponent(user) : null,
+                pass: pass ? decodeURIComponent(pass) : null,
+                ref: decodeURIComponent(ref),
+                quality: quality || Object.keys(qualityPresets)[0]
+            };
+        }
         
         if (!qualityPresets[params.quality]) {
             params.quality = Object.keys(qualityPresets)[0];
@@ -934,6 +985,8 @@ app.get("/", (req, res) => {
     const baseUrl = getBaseUrl(req);
     const exampleWebPlayer = `${baseUrl}/player?host=<enigma2_ip>&port=8001&user=<username>&pass=<password>&ref=<service_ref>&quality=high`;
     const exampleStreamUrl = `${baseUrl}/stream?host=<enigma2_ip>&port=8001&user=<username>&pass=<password>&ref=<service_ref>&quality=high`;
+    const exampleDirectUrl = `${baseUrl}/player?url=<stream_url>&quality=high`;
+    const exampleDirectStream = `${baseUrl}/stream?url=<stream_url>&quality=high`;
     
     res.send(`<!DOCTYPE html>
 <html>
@@ -977,14 +1030,22 @@ app.get("/", (req, res) => {
         <div class="example">
             <h3>🔗 Available URLs</h3>
             
-            <p><span class="url-type">🌐 Web Player URL</span> - For browsers with video player:</p>
+            <p><span class="url-type">🌐 Direct URL Mode</span> - Use any HTTP stream URL directly:</p>
+            <code>${exampleDirectUrl}</code>
+            <p><small>Example: ${baseUrl}/player?url=https://tvro.duckdns.org:3139/services/f3f99a/channel/73ce49ed4a65/5df766e7&quality=high</small></p>
+            
+            <p><span class="url-type">📺 Direct Stream URL</span> - For VLC with direct URL:</p>
+            <code>${exampleDirectStream}</code>
+            
+            <hr style="border: 1px solid #444; margin: 20px 0;">
+            
+            <p><span class="url-type">🌐 Legacy Mode</span> - For browsers with Enigma2 parameters:</p>
             <code>${exampleWebPlayer}</code>
             
-            <p><span class="url-type">📺 External Stream URL</span> - For VLC, Roku, any HLS player:</p>
+            <p><span class="url-type">📺 Legacy Stream URL</span> - For VLC with Enigma2 parameters:</p>
             <code>${exampleStreamUrl}</code>
             
-            <p><small>🔐 Replace &lt;enigma2_ip&gt;, &lt;username&gt;, &lt;password&gt;, and &lt;service_ref&gt; with your values</small></p>
-            <p><small>URL-encode special characters: & → %26, $ → %24, @ → %40, : → %3A, / → %2F</small></p>
+            <p><small>🔐 Replace placeholders with your values. URL-encode special characters: & → %26, $ → %24, @ → %40, : → %3A, / → %2F</small></p>
         </div>
         
         <div class="quality-list">
