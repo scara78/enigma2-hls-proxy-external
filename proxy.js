@@ -6,6 +6,7 @@ const crypto = require("crypto");
 const os = require("os");
 
 const app = express();
+app.set('trust proxy', true); // Trust Easypanel/Traefik reverse proxy headers
 const PORT = 8080;
 const BASE_HLS_DIR = path.join(__dirname, "tmp", "hls");
 const QUALITY_PRESETS_FILE = path.join(__dirname, "quality-presets.json");
@@ -39,20 +40,13 @@ function decrypt(text) {
     }
 }
 
-// Get local IP address for display
-function getLocalIp() {
-    const interfaces = os.networkInterfaces();
-    for (const name of Object.keys(interfaces)) {
-        for (const iface of interfaces[name]) {
-            if (iface.family === 'IPv4' && !iface.internal) {
-                return iface.address;
-            }
-        }
-    }
-    return "localhost";
+// Detect base URL from request (works behind reverse proxies like Easypanel/Traefik)
+function getBaseUrl(req) {
+    // Easypanel/Traefik set X-Forwarded-Proto and X-Forwarded-Host
+    const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+    const host = req.headers['x-forwarded-host'] || req.headers['host'] || 'localhost';
+    return `${proto}://${host}`;
 }
-
-const LOCAL_IP = getLocalIp();
 
 // Create base directory
 if (!fs.existsSync(BASE_HLS_DIR)) {
@@ -594,8 +588,11 @@ app.get("/player", (req, res) => {
         
         const { streamId, hlsUrl } = streamManager.getOrCreateStream(params);
         
+        // Get base URL (works with Easypanel/reverse proxy)
+        const baseUrl = getBaseUrl(req);
+        
         // Externe Stream-URL für VLC
-        const externalStreamUrl = `http://${req.hostname}:${PORT}/stream?host=${encodeURIComponent(host)}&port=${port || "8001"}&user=${user ? encodeURIComponent(user) : ''}&pass=${pass ? encodeURIComponent(pass) : ''}&ref=${encodeURIComponent(ref)}&quality=${params.quality}`;
+        const externalStreamUrl = `${baseUrl}/stream?host=${encodeURIComponent(host)}&port=${port || "8001"}&user=${user ? encodeURIComponent(user) : ''}&pass=${pass ? encodeURIComponent(pass) : ''}&ref=${encodeURIComponent(ref)}&quality=${params.quality}`;
         
         // Quality Options für das Dropdown
         let qualityOptions = '';
@@ -611,7 +608,7 @@ app.get("/player", (req, res) => {
         }
         const descriptionJson = JSON.stringify(descriptionMap);
         
-        const fullHlsUrl = `http://${req.hostname}:${PORT}${hlsUrl}`;
+        const fullHlsUrl = `${baseUrl}${hlsUrl}`;
         
         res.send(`<!DOCTYPE html>
 <html>
@@ -934,8 +931,9 @@ app.get("/", (req, res) => {
         </tr>
     `).join('');
     
-    const exampleWebPlayer = `http://${LOCAL_IP}:${PORT}/player?host=<enigma2_ip>&port=8001&user=<username>&pass=<password>&ref=<service_ref>&quality=high`;
-    const exampleStreamUrl = `http://${LOCAL_IP}:${PORT}/stream?host=<enigma2_ip>&port=8001&user=<username>&pass=<password>&ref=<service_ref>&quality=high`;
+    const baseUrl = getBaseUrl(req);
+    const exampleWebPlayer = `${baseUrl}/player?host=<enigma2_ip>&port=8001&user=<username>&pass=<password>&ref=<service_ref>&quality=high`;
+    const exampleStreamUrl = `${baseUrl}/stream?host=<enigma2_ip>&port=8001&user=<username>&pass=<password>&ref=<service_ref>&quality=high`;
     
     res.send(`<!DOCTYPE html>
 <html>
@@ -967,7 +965,7 @@ app.get("/", (req, res) => {
         
         <div class="box">
             <h3>📊 Server Information</h3>
-            <p>Server IP: ${LOCAL_IP}:${PORT}</p>
+            <p>Server URL: ${baseUrl}</p>
             <p>Active Streams: ${streamManager.streams.size}</p>
             <p>Uptime: ${Math.floor(process.uptime() / 60)} minutes</p>
             <p>Temporary HLS directory: <code>${BASE_HLS_DIR}</code></p>
@@ -1036,21 +1034,20 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log("\n" + "=".repeat(70));
     console.log("🎬 Enigma2 HLS Proxy started!");
     console.log("=".repeat(70));
-    console.log(`🌐 Server: http://${LOCAL_IP}:${PORT}`);
+    console.log(`🌐 Listening on port: ${PORT}`);
     console.log(`📁 HLS directory: ${BASE_HLS_DIR}`);
     console.log("\n📁 Quality presets loaded from: quality-presets.json");
     console.log("\n🎯 Available quality presets:");
     Object.entries(qualityPresets).forEach(([key, q]) => {
         console.log(`   ${key}: ${q.name} (${q.maxrate})`);
     });
-    console.log("\n🔗 Available URLs:");
-    console.log(`   🌐 Web Player:  http://${LOCAL_IP}:${PORT}/player?host=<enigma2_ip>&port=8001&user=<username>&pass=<password>&ref=<service_ref>&quality=<preset>`);
-    console.log(`   📺 External:    http://${LOCAL_IP}:${PORT}/stream?host=<enigma2_ip>&port=8001&user=<username>&pass=<password>&ref=<service_ref>&quality=<preset>`);
+    console.log("\n🔗 URL format (replace with your domain):");
+    console.log(`   🌐 Web Player:  https://<your-domain>/player?host=<enigma2_ip>&port=8001&user=<username>&pass=<password>&ref=<service_ref>&quality=<preset>`);
+    console.log(`   📺 External:    https://<your-domain>/stream?host=<enigma2_ip>&port=8001&user=<username>&pass=<password>&ref=<service_ref>&quality=<preset>`);
     console.log("\n🔐 Note: Replace values and URL-encode special characters");
     console.log("   & → %26, $ → %24, @ → %40, : → %3A, / → %2F");
     console.log("\n🧹 Cleanup:");
-    console.log("   - Inactive streams stopped after 5 minutes");
-    console.log("   - Files deleted after 5 minutes of inactivity");
-    console.log("   - Live playlists are NEVER deleted while stream is active");
+    console.log("   - Inactive streams stopped after 2 minutes");
+    console.log("   - Old segments deleted after 30 seconds");
     console.log("=".repeat(70) + "\n");
 });
